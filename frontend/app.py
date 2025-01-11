@@ -1,29 +1,97 @@
 import streamlit as st
 from datetime import datetime, timedelta
 import random
+import string
+import time
+import requests
 
-# Initialize session state for total points if not exists
-if 'total_points' not in st.session_state:
-    st.session_state.total_points = 125750
+# API Configuration
+API_URL = "http://localhost:8000"
 
-# Add after initial session state setup
-if 'activities' not in st.session_state:
-    st.session_state.activities = [
-        {
-            "date": (datetime.now() - timedelta(days=x)).strftime("%Y-%m-%d"),
-            "app": app,
-            "points": points,
-            "tx": f"https://solscan.io/tx/{random.randint(1000000, 9999999)}"
+# Global variables for account balances
+
+if 'USER1_ACC_SOL' not in st.session_state:
+    st.session_state.USER1_ACC_SOL = 8500
+if 'USER1_ACC_TOKEN' not in st.session_state:
+    st.session_state.USER1_ACC_TOKEN = 150000
+
+# Session State Initialization
+if "user_public_key" not in st.session_state:
+    st.session_state.user_public_key = ""
+if "redeemed_rewards" not in st.session_state:
+    st.session_state.redeemed_rewards = []
+if "transaction_history" not in st.session_state:
+    st.session_state.transaction_history = []
+
+# Utility Functions
+def generate_tx_hash():
+    """Generate a fake Solana transaction hash"""
+    return ''.join(random.choices(string.hexdigits, k=64)).lower()
+
+def simulate_transaction():
+    """Simulate a blockchain transaction with delay"""
+    with st.spinner('Processing transaction on Solana...'):
+        time.sleep(2)  # Simulate blockchain confirmation time
+    return generate_tx_hash()
+
+def get_user_balances(public_key):
+    return st.session_state.USER1_ACC_SOL, st.session_state.USER1_ACC_TOKEN
+
+def update_balance(public_key, points_to_deduct):
+    """Update user balance in session state"""
+    try:
+        st.session_state.USER1_ACC_TOKEN -= points_to_deduct
+        return True
+    except Exception as e:
+        st.error(f"Error updating balance: {str(e)}")
+        return False
+
+def redeem_reward(reward):
+    """Handle reward redemption process"""
+    if not st.session_state.user_public_key:
+        st.error("Please enter your public key in the sidebar.")
+        return
+
+    sol_balance, token_balance = get_user_balances(st.session_state.user_public_key)
+
+    if token_balance < reward['points']:
+        st.error(f"Insufficient points. You need {reward['points']} points but have {token_balance}.")
+        return
+
+    status_placeholder = st.empty()
+    tx_hash = simulate_transaction()
+
+    if update_balance(st.session_state.user_public_key, reward['points']):
+        redemption = {
+            'reward': reward['name'],
+            'points': reward['points'],
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'tx_hash': tx_hash
         }
-        for x, (app, points) in enumerate([
-            ("MedFit Tracker", 500),
-            ("WellnessRewards", 250),
-        ])
-    ]
+        st.session_state.redeemed_rewards.append(redemption)
 
-# Page configuration
+        # Add to transaction history
+        st.session_state.transaction_history.append({
+            'date': datetime.now().strftime("%Y-%m-%d"),
+            'type': 'Redemption',
+            'points': -reward['points'],
+            'tx': tx_hash
+        })
+
+        status_placeholder.success(f"""
+        ✅ Successfully redeemed: {reward['name']}
+        Points deducted: {reward['points']}
+        Transaction Hash: [{tx_hash[:8]}...{tx_hash[-8:]}](https://solscan.io/tx/{tx_hash})
+        """)
+
+        time.sleep(1)
+        st.rerun()
+    else:
+        status_placeholder.error("Transaction failed. Please try again.")
+
+# Page Configuration
 st.set_page_config(
-    page_title="Soezlahna - Your Rewards Made Easy on Solana",
+    page_title="Soezliana - Healthcare Rewards on Solana",
     page_icon="⚕️",
     layout="wide"
 )
@@ -140,7 +208,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Title Section
+# Sidebar
+st.sidebar.title("Account")
+st.session_state.user_public_key = st.sidebar.text_input(
+    "Your Public Key",
+    value=st.session_state.user_public_key
+)
+
+# Main Page Title
 st.markdown("""
     <div class='title-section'>
         <h1 style='font-size: 2.8rem; color: #9945FF; margin-bottom: 0.2rem;'>Soezliana</h1>
@@ -149,38 +224,62 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Points Summary
+if st.session_state.user_public_key:
+    sol_balance, token_balance = get_user_balances(st.session_state.user_public_key)
+    total_points = token_balance
+else:
+    total_points = 0
+
 st.markdown(f"""
     <div class='points-card'>
-        <h1 style='font-size: 2.8rem; color: #9945FF; margin: 0;'>{st.session_state.total_points:,}</h1>
+        <h1 style='font-size: 2.8rem; color: #9945FF; margin: 0;'>{total_points}</h1>
         <p style='font-size: 1rem; color: #fff; margin: 0;'>Total Healthcare Points Accumulated via Solana</p>
     </div>
 """, unsafe_allow_html=True)
 
-# Keep only this comprehensive redemption function
-def redeem_reward(reward_name, points_cost):
-    if st.session_state.total_points >= points_cost:
-        # Update total points
-        st.session_state.total_points -= points_cost
-        
-        # Add new activity
-        new_activity = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "app": f"Reward: {reward_name}",
-            "points": -points_cost,
-            "tx": f"https://solscan.io/tx/{random.randint(1000000, 9999999)}"
-        }
-        st.session_state.activities.insert(0, new_activity)
-        
-        # Visual feedback
-        st.balloons()
-        st.success(f"Successfully redeemed {reward_name}!")
-        st.rerun()  # Add this line to force immediate update
-        return True
-    else:
-        st.error("Insufficient points!")
-        return False
+# Recent Activity Section
+st.markdown("<h2 class='section-title'>Recent Healthcare Activities</h2>", unsafe_allow_html=True)
 
-# Define rewards list before the UI components
+# Combine redeemed rewards with regular activities
+all_activities = st.session_state.transaction_history + [
+    {
+        "date": (datetime.now() - timedelta(days=x)).strftime("%Y-%m-%d"),
+        "type": app,
+        "points": points,
+        "tx": generate_tx_hash()
+    }
+    for x, (app, points) in enumerate([
+        ("MedFit Tracker", 500),
+        ("WellnessRewards", 250),
+        ("HealthCheck+", 1000),
+        ("NutriPoints", 750),
+        ("MentalWell", 300)
+    ])
+]
+
+# Sort activities by date
+all_activities.sort(key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d"), reverse=True)
+
+for activity in all_activities:
+    with st.container():
+        st.markdown(f"""
+            <div class='activity-container'>
+                <div style='display: grid; grid-template-columns: 2fr 2fr 2fr 3fr; gap: 1rem; align-items: center;'>
+                    <div>{activity['date']}</div>
+                    <div>{activity['type']}</div>
+                    <div style='color: {"#FF4B4B" if activity.get("points", 0) < 0 else "#9945FF"}; font-weight: bold;'>
+                        {'+' if activity['points'] > 0 else ''}{activity['points']} pts
+                    </div>
+                    <div><a href='https://solscan.io/tx/{activity['tx']}' target='_blank' style='color: #9945FF;'>
+                        View on Solana
+                    </a></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+# Rewards Section
+st.markdown("<h2 class='section-title'>Available Healthcare Rewards</h2>", unsafe_allow_html=True)
+
 rewards = [
     {
         "name": "Annual Health Checkup",
@@ -202,41 +301,21 @@ rewards = [
     }
 ]
 
-# Display rewards section with buttons
-st.markdown("<h2 class='section-title'>Available Healthcare Rewards</h2>", unsafe_allow_html=True)
-
-# Create columns for rewards
 reward_cols = st.columns(3)
 for idx, reward in enumerate(rewards):
     with reward_cols[idx]:
         st.markdown(f"""
             <div class='reward-card'>
                 <div class='reward-image-container'>
-                    <img src='{reward["image"]}' class='reward-image' alt='{reward["name"]}'>
+                    <img src='{reward['image']}' class='reward-image' alt='{reward['name']}'>
                 </div>
-                <h4 style='margin: 0.5rem 0;'>{reward["name"]}</h4>
-                <p style='color: rgba(255, 255, 255, 0.8); flex-grow: 1;'>{reward["description"]}</p>
-                <p style='color: #9945FF; font-weight: bold; margin: 0.5rem 0;'>{reward["points"]} points</p>
+                <h4 style='margin: 0.5rem 0;'>{reward['name']}</h4>
+                <p style='color: rgba(255, 255, 255, 0.8); flex-grow: 1;'>{reward['description']}</p>
+                <p style='color: #9945FF; font-weight: bold; margin: 0.5rem 0;'>{reward['points']} points</p>
             </div>
         """, unsafe_allow_html=True)
-        
-        if st.button(f"Redeem for {reward['points']} points", key=f"redeem_{reward['name']}"):
-            redeem_reward(reward['name'], reward['points'])
-
-# Recent Activity Section
-st.markdown("<h2 class='section-title'>Recent Healthcare Activities</h2>", unsafe_allow_html=True)
-
-# Update activities display
-for activity in st.session_state.activities:
-    col1, col2, col3, col4 = st.columns([2, 3, 2, 3])
-    with col1:
-        st.write(activity["date"])
-    with col2:
-        st.write(activity["app"])
-    with col3:
-        st.write(f"{activity['points']:+,d} points")
-    with col4:
-        st.markdown(f"[View on Solana]({activity['tx']})")
+        if st.button(f"Redeem for {reward['points']} points", key=reward['name']):
+            redeem_reward(reward)
 
 # Connected Platforms Section
 st.markdown("<h2 class='section-title'>Connected Healthcare Platforms</h2>", unsafe_allow_html=True)
@@ -261,9 +340,9 @@ for i, (app_name, icon, connected) in enumerate(apps):
             </div>
         """, unsafe_allow_html=True)
 
-# Footer Section
+# Footer
 st.markdown("""
     <div class='footer'>
-        © 2024 John Ong from Team Hoshino Universiti Malaya
+        © 2024 John Ong and Sze Yu Sim from Team Hoshino Universiti Malaya
     </div>
 """, unsafe_allow_html=True)
