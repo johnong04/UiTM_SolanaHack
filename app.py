@@ -2,9 +2,28 @@ import streamlit as st
 from datetime import datetime, timedelta
 import random
 
+# Initialize session state for total points if not exists
+if 'total_points' not in st.session_state:
+    st.session_state.total_points = 125750
+
+# Add after initial session state setup
+if 'activities' not in st.session_state:
+    st.session_state.activities = [
+        {
+            "date": (datetime.now() - timedelta(days=x)).strftime("%Y-%m-%d"),
+            "app": app,
+            "points": points,
+            "tx": f"https://solscan.io/tx/{random.randint(1000000, 9999999)}"
+        }
+        for x, (app, points) in enumerate([
+            ("MedFit Tracker", 500),
+            ("WellnessRewards", 250),
+        ])
+    ]
+
 # Page configuration
 st.set_page_config(
-    page_title="Soezliana - Healthcare Rewards on Solana",
+    page_title="Soezlahna - Your Rewards Made Easy on Solana",
     page_icon="⚕️",
     layout="wide"
 )
@@ -130,48 +149,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Points Summary
-st.markdown("""
+st.markdown(f"""
     <div class='points-card'>
-        <h1 style='font-size: 2.8rem; color: #9945FF; margin: 0;'>125,750</h1>
+        <h1 style='font-size: 2.8rem; color: #9945FF; margin: 0;'>{st.session_state.total_points:,}</h1>
         <p style='font-size: 1rem; color: #fff; margin: 0;'>Total Healthcare Points Accumulated via Solana</p>
     </div>
 """, unsafe_allow_html=True)
 
-# Recent Activity Section
-st.markdown("<h2 class='section-title'>Recent Healthcare Activities</h2>", unsafe_allow_html=True)
+# Keep only this comprehensive redemption function
+def redeem_reward(reward_name, points_cost):
+    if st.session_state.total_points >= points_cost:
+        # Update total points
+        st.session_state.total_points -= points_cost
+        
+        # Add new activity
+        new_activity = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "app": f"Reward: {reward_name}",
+            "points": -points_cost,
+            "tx": f"https://solscan.io/tx/{random.randint(1000000, 9999999)}"
+        }
+        st.session_state.activities.insert(0, new_activity)
+        
+        # Visual feedback
+        st.balloons()
+        st.success(f"Successfully redeemed {reward_name}!")
+        st.rerun()  # Add this line to force immediate update
+        return True
+    else:
+        st.error("Insufficient points!")
+        return False
 
-activities = [
-    {
-        "date": (datetime.now() - timedelta(days=x)).strftime("%Y-%m-%d"),
-        "app": app,
-        "points": points,
-        "tx": f"https://solscan.io/tx/{random.randint(1000000, 9999999)}"
-    }
-    for x, (app, points) in enumerate([
-        ("MedFit Tracker", 500),
-        ("WellnessRewards", 250),
-        ("HealthCheck+", 1000),
-        ("NutriPoints", 750),
-        ("MentalWell", 300)
-    ])
-]
-
-for activity in activities:
-    with st.container():
-        st.markdown(f"""
-            <div class='activity-container'>
-                <div style='display: grid; grid-template-columns: 2fr 2fr 2fr 3fr; gap: 1rem; align-items: center;'>
-                    <div>{activity['date']}</div>
-                    <div>{activity['app']}</div>
-                    <div style='color: #9945FF; font-weight: bold;'>+{activity['points']} pts</div>
-                    <div><a href='{activity['tx']}' target='_blank' style='color: #9945FF;'>View on Solana</a></div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-# Rewards Section
-st.markdown("<h2 class='section-title'>Available Healthcare Rewards</h2>", unsafe_allow_html=True)
-
+# Define rewards list before the UI components
 rewards = [
     {
         "name": "Annual Health Checkup",
@@ -193,20 +202,41 @@ rewards = [
     }
 ]
 
+# Display rewards section with buttons
+st.markdown("<h2 class='section-title'>Available Healthcare Rewards</h2>", unsafe_allow_html=True)
+
+# Create columns for rewards
 reward_cols = st.columns(3)
 for idx, reward in enumerate(rewards):
     with reward_cols[idx]:
         st.markdown(f"""
             <div class='reward-card'>
                 <div class='reward-image-container'>
-                    <img src='{reward['image']}' class='reward-image' alt='{reward['name']}'>
+                    <img src='{reward["image"]}' class='reward-image' alt='{reward["name"]}'>
                 </div>
-                <h4 style='margin: 0.5rem 0;'>{reward['name']}</h4>
-                <p style='color: rgba(255, 255, 255, 0.8); flex-grow: 1;'>{reward['description']}</p>
-                <p style='color: #9945FF; font-weight: bold; margin: 0.5rem 0;'>{reward['points']} points</p>
+                <h4 style='margin: 0.5rem 0;'>{reward["name"]}</h4>
+                <p style='color: rgba(255, 255, 255, 0.8); flex-grow: 1;'>{reward["description"]}</p>
+                <p style='color: #9945FF; font-weight: bold; margin: 0.5rem 0;'>{reward["points"]} points</p>
             </div>
         """, unsafe_allow_html=True)
-        st.button(f"Redeem for {reward['points']} points", key=reward['name'])
+        
+        if st.button(f"Redeem for {reward['points']} points", key=f"redeem_{reward['name']}"):
+            redeem_reward(reward['name'], reward['points'])
+
+# Recent Activity Section
+st.markdown("<h2 class='section-title'>Recent Healthcare Activities</h2>", unsafe_allow_html=True)
+
+# Update activities display
+for activity in st.session_state.activities:
+    col1, col2, col3, col4 = st.columns([2, 3, 2, 3])
+    with col1:
+        st.write(activity["date"])
+    with col2:
+        st.write(activity["app"])
+    with col3:
+        st.write(f"{activity['points']:+,d} points")
+    with col4:
+        st.markdown(f"[View on Solana]({activity['tx']})")
 
 # Connected Platforms Section
 st.markdown("<h2 class='section-title'>Connected Healthcare Platforms</h2>", unsafe_allow_html=True)
