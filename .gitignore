@@ -1,0 +1,4 @@
+.ropeprooject/
+venv/
+__pycache__/
+secret.txt
